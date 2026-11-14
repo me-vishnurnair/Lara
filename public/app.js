@@ -242,7 +242,8 @@ async function refresh(force=false) {
   const version=sessionVersion;
   refreshPromise=(async()=>{
     try {
-      const data=await api('/api/state');if(version!==sessionVersion||!isAuthenticated)return;
+      const data=await api(`/api/state?revision=${state.revision||0}`);if(version!==sessionVersion||!isAuthenticated)return;
+      if(data.unchanged){lastFetchError='';return;}
       state={...state,...data};for(const key of ['goals','artifacts','memories','messages','approvals'])if(!Array.isArray(state[key]))state[key]=[];
       lastFetchError='';renderCurrent();
     }catch(err){if(isAuthenticated&&force)throw err;if(isAuthenticated&&lastFetchError!==readableError(err)){lastFetchError=readableError(err);toast(lastFetchError,true);}}
@@ -299,7 +300,7 @@ async function sendChat() {
     let response;
     const localReady=localAI?.isLocalAIReady();
     const wantsArtifact=/\b(build|make|create|generate|design)\b/i.test(message)&&/\b(app|application|website|web page|site|landing page)\b/i.test(message);
-    const builtIn=/\b(remember|forget|memory|pause|resume|stop|cancel|kill|run|approve|deny|publish|unpublish|delete|export|import|recovery|security|scan|pentest|penetration|budget|spreadsheet|research|sources?|status|goals?|tasks?|progress)\b/i.test(message);
+    const builtIn=/\b(remember|forget|memory|pause|resume|stop|cancel|kill|run|approve|deny|publish|unpublish|delete|export|import|recovery|security|scan|pentest|penetration|budget|spreadsheet|research|sources?|status|goals?|tasks?|progress)\b/i.test(message)||/\b(my name|who am i|about me|greet me)\b/i.test(message);
     if(localReady&&wantsArtifact&&!builtIn){
       localInference=true;updateVoiceUI();
       const kind=/\b(app|application)\b/i.test(message)?'app':'site';

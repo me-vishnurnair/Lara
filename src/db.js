@@ -26,7 +26,9 @@ export async function openDatabase({ url = process.env.DATABASE_URL, dataDir = p
     const result = statement.run(...values);
     return { rows: [], rowCount: Number(result.changes) };
   };
-  await query(`CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, recovery_hash TEXT UNIQUE NOT NULL, state TEXT NOT NULL, created_at BIGINT NOT NULL)`);
+  await query(`CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, recovery_hash TEXT UNIQUE NOT NULL, state TEXT NOT NULL, created_at BIGINT NOT NULL, revision INTEGER NOT NULL DEFAULT 1)`);
+  if(pool)await query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 1');
+  else if(!sqlite.prepare('PRAGMA table_info(accounts)').all().some(c=>c.name==='revision'))sqlite.exec('ALTER TABLE accounts ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
   await query(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, expires_at BIGINT NOT NULL)`);
   await query(`CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, data TEXT NOT NULL, created_at BIGINT NOT NULL)`);
   await query(`CREATE TABLE IF NOT EXISTS publications (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE)`);
@@ -47,7 +49,7 @@ export async function openDatabase({ url = process.env.DATABASE_URL, dataDir = p
       let result = fn(state, (sql,values=[]) => query(sql,values,client));
       if (result instanceof Promise && !transactional) throw new Error('State mutation must be synchronous');
       result = await result;
-      await query('UPDATE accounts SET state=$1 WHERE id=$2', [JSON.stringify(state), id], client);
+      await query('UPDATE accounts SET state=$1,revision=revision+1 WHERE id=$2', [JSON.stringify(state), id], client);
       if (pool) await client.query('COMMIT'); else sqlite.exec('COMMIT');
       return result;
     } catch (error) {
@@ -64,6 +66,10 @@ export async function openDatabase({ url = process.env.DATABASE_URL, dataDir = p
   const store = {
     kind: pool ? 'PostgreSQL' : 'SQLite',
     read: id => serial(() => read(id)),
+    async changedState(id, revision=0){
+      const {rows}=await store.query('SELECT state,revision FROM accounts WHERE id=$1 AND revision<>$2',[id,revision]);
+      return rows[0]?{...JSON.parse(rows[0].state),revision:Number(rows[0].revision)}:null;
+    },
     mutate: (id, fn) => serial(() => mutate(id, fn)),
     transaction: (id, fn) => serial(() => mutate(id, fn, true)),
     query: (sql, values) => serial(() => query(sql, values)),

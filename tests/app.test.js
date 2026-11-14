@@ -98,3 +98,11 @@ test('SQLite reopen preserves recovery and saved state',async t=>{
   const db=await openDatabase({dataDir:dir,url:''});await db.createAccount('workspace','recovery-hash',{goals:[],memories:[{key:'Project',value:'Lara'}]});await db.close();
   const reopened=await openDatabase({dataDir:dir,url:''});assert.equal((await reopened.read('workspace')).memories[0].value,'Lara');assert.equal((await reopened.query('SELECT recovery_hash FROM accounts WHERE id=$1',['workspace'])).rows[0].recovery_hash,'recovery-hash');await reopened.close();
 });
+
+test('unchanged polling avoids transferring workspace state and mutations advance revision',async t=>{
+  const {request,cookie}=await start(t,{startWorker:false});
+  const first=(await request('/api/state',{cookie})).body;assert(first.revision>=1);
+  const unchanged=(await request(`/api/state?revision=${first.revision}`,{cookie})).body;assert.deepEqual(unchanged,{unchanged:true});
+  await request('/api/memory',{cookie,body:{key:'Revision',value:'Changed'}});
+  const changed=(await request(`/api/state?revision=${first.revision}`,{cookie})).body;assert(changed.revision>first.revision);assert(changed.memories.some(m=>m.key==='Revision'));
+});

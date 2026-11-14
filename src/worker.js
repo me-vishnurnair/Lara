@@ -9,10 +9,11 @@ export function createWorker(db, capabilities, {interval=1000, concurrency=2, bu
     ticking=true;
     try {
       const {rows}=await db.query('SELECT id,state FROM accounts');
-      let foundWork=false;
+      let foundWork=false,nextRecovery=Infinity;
       for(const row of rows){
         if(stopped || active.size>=concurrency)break;
         const snapshot=JSON.parse(row.state);
+        for(const g of snapshot.goals)if(g.status==='running'&&!active.has(g.id))nextRecovery=Math.min(nextRecovery,(g.leaseUntil||Date.now())+100);
         const candidate=snapshot.goals.find(g=>!active.has(g.id) && (g.status==='queued' || (g.status==='running' && (g.leaseUntil||0)<Date.now())));
         if(!candidate)continue;
         const claim=await db.mutate(row.id,state=>{
@@ -30,8 +31,8 @@ export function createWorker(db, capabilities, {interval=1000, concurrency=2, bu
           active.set(claim.goal.id,{controller,job,userId:row.id});
         }
       }
-      if(!foundWork&&active.size===0)idleUntil=Date.now()+10*60000;
-    } catch(error){console.error('Worker polling unavailable:',error.code||error.name);}finally{ticking=false;}
+      if(!foundWork&&active.size===0)idleUntil=nextRecovery;
+    } catch(error){idleUntil=Date.now()+15000;console.error('Worker polling unavailable:',error.code||error.name);}finally{ticking=false;}
   }
   async function run(userId,{goal,challenge},controller){
     let heartbeat;

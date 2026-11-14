@@ -28,13 +28,13 @@ Set these values in the hosting dashboard or through the provider's secret confi
 | `TRUST_PROXY` | `1` on Render |
 | `MAX_ACCOUNTS` | `20` or fewer for a small personal installation |
 
-Lara requires Node.js 22.13 or newer. The start command is `npm start`. Use the repository's locked package installation and asset build before starting. The HTTP readiness endpoint is `/healthz`; configure it as the Render HTTP health-check path. The server listens on the provider's `PORT` and `0.0.0.0`.
+Lara requires Node.js 22.13 or newer. Build with `npm ci --include=dev && npm run build`; start with `npm start`. Configure `/healthz` as the Render HTTP health-check path. It checks process liveness without repeatedly waking Neon. Database access is verified at startup, by `/readyz` during deployment verification, and by each real workspace request. The server listens on the provider's `PORT` and `0.0.0.0`.
 
 Check that a specific deployment reaches the provider's `live` state, then verify the real HTTPS URL. A queued or successful build is not proof that the server is reachable. [Render deployment lifecycle](https://render.com/docs/deploys), [HTTP health checks](https://render.com/docs/health-checks)
 
 ## Deployment verification
 
-1. Open the public HTTPS app and confirm `/healthz` reports PostgreSQL.
+1. Open the public HTTPS app and confirm `/readyz` reports PostgreSQL.
 2. Create a workspace and save its Recovery Kit outside that device.
 3. Run a starter goal; open its artifact and inspect its verification evidence.
 4. Add memory, sign out, and recover in a separate browser session using the kit.
@@ -52,7 +52,7 @@ Rotate the recovery key through Settings after a device is lost. Approval replac
 
 ## Operational limits
 
-The server uses leased goals and transactional completion: a paused, cancelled, or superseded run cannot commit a completed artifact. After process interruption, unfinished goals can be reclaimed and rebuilt, then verified again. Long-running tasks depend on the free server remaining awake.
+The server uses leased goals and transactional completion: a paused, cancelled, or superseded run cannot commit a completed artifact. After process interruption, unfinished goals can be reclaimed and rebuilt, then verified again. Idle workers stop querying the database when there is no work; startup, new work and lease expiry wake them. Browser polling transfers the full workspace only after its revision changes. Long-running tasks depend on the free server remaining awake.
 
 The built-in operator executes bounded artifact builders and scoped security reviews. Optional local AI depends on the device's browser and available memory. It does not create a paid API dependency. HTTPS reviews require target ownership verification and do not provide arbitrary device access or exploit execution.
 

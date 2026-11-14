@@ -36,7 +36,10 @@ export async function createApp({db,workerOptions={},startWorker=true,publicOrig
     }
     next();
   }));
-  app.get('/healthz',asyncRoute(async(req,res)=>{await db.ping();res.json({status:'ok',version:'1.0.0',database:db.kind});}));
+  // Frequent provider probes must not wake sleeping database compute.
+  // Startup initializes the DB. /readyz and real API workflows check live DB access.
+  app.get('/healthz',(req,res)=>res.json({status:'ok',version:'1.0.0',database:db.kind,check:'process'}));
+  app.get('/readyz',asyncRoute(async(req,res)=>{await db.ping();res.json({status:'ok',database:db.kind,check:'database'});}));
   app.post('/api/auth/create',asyncRoute(async(req,res)=>{
     if(!await db.rate(`create:${req.ip}`,5,3600000))throw new HttpError(429,'Too many workspaces created. Try again in an hour.');
     const name=text(req.body.name,80,'Name'),id=uid(),key=recoveryKey(),state=initialState(id,name),session=token();
@@ -59,7 +62,7 @@ export async function createApp({db,workerOptions={},startWorker=true,publicOrig
   }));
   app.get('/api/session',asyncRoute(async(req,res)=>{const state=await db.read(req.userId);res.json({user:state.user,capabilities:{...capabilities,securityChallenge:state.securityChallenge}});}));
   app.post('/api/auth/logout',asyncRoute(async(req,res)=>{await db.query('DELETE FROM sessions WHERE token_hash=$1',[req.sessionHash]);cookie(req,res,'',0);res.json({ok:true});}));
-  app.get('/api/state',asyncRoute(async(req,res)=>{const state=await db.read(req.userId);res.json({...state,goals:state.goals.map(cleanGoal),capabilities:{...capabilities,securityChallenge:state.securityChallenge}});}));
+  app.get('/api/state',asyncRoute(async(req,res)=>{const revision=Number(req.query.revision)||0;const state=await db.changedState(req.userId,Number.isSafeInteger(revision)?revision:0);if(!state)return res.json({unchanged:true});res.json({...state,goals:state.goals.map(cleanGoal),capabilities:{...capabilities,securityChallenge:state.securityChallenge}});}));
   app.patch('/api/profile',asyncRoute(async(req,res)=>{const name=text(req.body.name,80,'Name');const user=await db.mutate(req.userId,s=>{s.user.name=name;const m=s.memories.find(m=>m.key==='Name');if(m){m.value=name;m.updatedAt=now();}return s.user;});res.json({user});}));
   app.post('/api/chat',asyncRoute(async(req,res)=>{const message=text(req.body.message,5000,'Message');let result;
     if(req.body.localReply!==undefined){const reply=text(req.body.localReply,16000,'Local AI reply');result=await db.mutate(req.userId,s=>{const assistant={id:uid(),role:'assistant',content:reply,createdAt:now(),engine:'on-device AI'};s.messages.push({id:uid(),role:'user',content:message,createdAt:now()},assistant);s.messages=s.messages.slice(-120);return {message:assistant};});}
