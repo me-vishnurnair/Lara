@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "Lara — Personal Operator",
+  "short_name": "Lara",
+  "description": "Your private personal operator. Goals, memory, and verified work across your devices.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8f7fb",
+  "theme_color": "#7761bf",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+  ],
+  "shortcuts": [
+    {"name": "Your goals", "url": "/#goals", "description": "See what Lara is working on"},
+    {"name": "Your memory", "url": "/#memory", "description": "Manage your personal context"}
+  ]
+}
